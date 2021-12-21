@@ -1,29 +1,31 @@
+from dataclasses import dataclass
+
+
+@dataclass
 class InfoMessage:
     """Информационное сообщение о тренировке."""
-
-    def __init__(
-        self,
-        training_type: str,
-        duration: float,
-        distance: float,
-        speed: float,
-        calories: float
-    ):
-        self.training_type = training_type
-        self.duration = duration
-        self.distance = distance
-        self.speed = speed
-        self.calories = calories
+    training_type: str
+    duration: float
+    distance: float
+    speed: float
+    calories: float
+    # :3f - округление и не менее трёх знаков после точки.
+    MESSAGE_TEMPLATE: str = (
+        'Тип тренировки: {training_type}; '
+        'Длительность: {duration:.3f} ч.; '
+        'Дистанция: {distance:.3f} км; '
+        'Ср. скорость: {speed:.3f} км/ч; '
+        'Потрачено ккал: {calories:.3f}.'
+    )
 
     def get_message(self) -> str:
         """Получить сообщение, содержащее информацию о тренировке."""
-        # :3f - округление и не менее трёх знаков после точки.
-        message = (
-            f'Тип тренировки: {self.training_type}; '
-            f'Длительность: {self.duration:.3f} ч.; '
-            f'Дистанция: {self.distance:.3f} км; '
-            f'Ср. скорость: {self.speed:.3f} км/ч; '
-            f'Потрачено ккал: {self.calories:.3f}.'
+        message = self.MESSAGE_TEMPLATE.format(
+            training_type=self.training_type,
+            duration=self.duration,
+            distance=self.distance,
+            speed=self.speed,
+            calories=self.calories,
         )
         return message
 
@@ -32,6 +34,7 @@ class Training:
     """Базовый класс тренировки."""
     LEN_STEP: float = 0.65  # Метров
     M_IN_KM: int = 1000
+    MINUTE: int = 60  # Секунд
 
     def __init__(
         self,
@@ -40,7 +43,8 @@ class Training:
         weight: float,  # КГ
     ) -> None:
         self.action = action
-        self.duration = duration
+        self.duration_h = duration
+        self.duration_m = duration * self.MINUTE
         self.weight = weight
 
     def get_distance(self) -> float:
@@ -49,7 +53,7 @@ class Training:
 
     def get_mean_speed(self) -> float:
         """Получить среднюю скорость движения."""
-        return self.get_distance() / self.duration
+        return self.get_distance() / self.duration_h
 
     def get_spent_calories(self) -> float:
         """Получить количество затраченных калорий."""
@@ -59,7 +63,7 @@ class Training:
         """Вернуть информационное сообщение о выполненной тренировке."""
         message = InfoMessage(
             training_type=self.__class__.__name__,
-            duration=self.duration,
+            duration=self.duration_h,
             distance=self.get_distance(),
             speed=self.get_mean_speed(),
             calories=self.get_spent_calories(),
@@ -73,8 +77,9 @@ class Running(Training):
     COEFF_CALORIE_2: int = 20
 
     def get_spent_calories(self) -> float:
-        temp = self.COEFF_CALORIE_1 * self.get_mean_speed() - 20
-        return temp * self.weight / self.M_IN_KM * self.duration * 60
+        temp1 = self.COEFF_CALORIE_1 * self.get_mean_speed()
+        temp2 = temp1 - self.COEFF_CALORIE_2
+        return temp2 * self.weight / self.M_IN_KM * self.duration_m
 
 
 class SportsWalking(Training):
@@ -96,7 +101,7 @@ class SportsWalking(Training):
         part_1 = self.COEFF_CALORIE_1 * self.weight
         part_2 = self.get_mean_speed()**2 // self.height
         part_3 = self.COEFF_CALORIE_2 * self.weight
-        return (part_1 + part_2 * part_3) * self.duration * 60
+        return (part_1 + part_2 * part_3) * self.duration_m
 
 
 class Swimming(Training):
@@ -118,19 +123,33 @@ class Swimming(Training):
 
     def get_mean_speed(self) -> float:
         temp = self.length_pool * self.count_pool
-        return temp / self.M_IN_KM / self.duration
+        return temp / self.M_IN_KM / self.duration_h
 
     def get_spent_calories(self) -> float:
         return (self.get_mean_speed() + self.COEFF_CALORIE_1) * 2 * self.weight
 
 
-def read_package(workout_type: str, data: list) -> Training:
-    """Прочитать данные полученные от датчиков."""
+def read_package(
+    workout_type: str,
+    data: list,
+    raise_exceptions: bool = True,
+) -> Training:
+    """Прочитать данные полученные от датчиков.
+    Возвращает экземпляр класса Training.
+    Если передан некорректный workout_type,
+    будет выброшено исключение ValueError,
+    если при этом raise_exceptions равен False,
+    будет возвращено None.
+    """
     mapping = {
         'RUN': Running,
         'SWM': Swimming,
         'WLK': SportsWalking,
     }
+    if workout_type not in mapping:
+        if not raise_exceptions:
+            return
+        raise ValueError('Invalid workout_type')
     training_class = mapping[workout_type]
     training = training_class(*data)
     return training
